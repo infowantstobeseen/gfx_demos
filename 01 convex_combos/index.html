@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Affine &amp; Convex Combinations</title>
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/css/bootstrap.min.css" rel="stylesheet">
+<script type="text/javascript"
+  src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+</script>
+<!--    <link href="http://web.cse.msstate.edu/~tjk/assets/css/all.css" rel="stylesheet"> -->
+    <style>
+    // responsive svg from http://stackoverflow.com/a/25978286
+    .svg-content-responsive {
+        display: inline-block;
+        position: absolute;
+        top: 10px;
+        left: 0;
+    }
+    #demo {
+        display: block;
+        position: relative;
+        width: 100%;
+        vertical-align: top;
+        overflow: hidden;
+    }
+    .triangle {
+        fill: steelblue;
+        stroke: lightblue;
+        stroke-width: 1.5px;
+    }
+    .point {
+        fill: white;
+        stroke: black;
+        stroke-width: 1.5px;
+    }
+    text {
+        font-family: sans-serif;
+        font-size: 16px;
+        fill: black;
+    }
+    .control {
+        width: 100%;
+        margin-bottom: 20px;
+    }
+    input[type=range]
+    {
+        width: 30%;
+        display: inline-block;
+    }    
+    .control div
+    {
+        display: inline-block;
+        width: 30%;
+        text-align: center;
+    }
+    </style>
+
+</head>
+<body>
+<div class="container-fluid">
+<main id="content" role="main" class="col-sm-8 col-sm-offset-2 col-xs-8 col-xs-offset-2">
+    <article>
+    <header><h1>Affine &amp; Convex Combinations</title></header>
+    
+    <figure id="demo" class="svg-container">
+    </figure>
+    <div class="control">
+        <input id="alpha" type="range" oninput="update('alpha')"
+            min="-1" max="2" value="0.33" step="0.01" />
+        <input id="beta" type="range" oninput="update('beta')"
+            min="-1" max="2" value="0.33" step="0.01" />
+        <input id="gamma" type="range" oninput="update('gamma')"
+            min="-1" max="2" value="0.33" step="0.01" />
+        <div id="alphatxt">&alpha; 0.33</div>
+        <div id="betatxt">&beta; 0.33</div>
+        <div id="gammatxt">&gamma; 0.33</div>
+    </div>
+
+    <p>In affine space, (convex) geometry can be defined by the <em>convex combination</em> of a series of points: An <em>affine combination</em> (a summation of weighted points where the weights total one) where the coefficients of the combination must be between 0&ndash;1</p>
+    
+    \[\mathbf{p} = \sum_i w_i\mathbf{p}_i\ \text{where }\sum_i w_i = 1\ \text{and }0\leq w_i \leq 1\]
+    
+    <p>So long as the weights of the affine combination satisfy the convex property, the point defined by the combination is inside the polygon. As we move outside the polygon, the affine combination (within the <em>affine hull</em> of the points: A line for 2 points, a plane for 3 non-colinear points, a volume for 4 non-planar points, etc.) indicates the relationship of the point to the polygon. This is especially useful for <em>point-in-polygon</em> testing: If all the coordinates are convex, then the point is the the polygon; if not, negative values are &ldquo;below&rdquo; the related point whereas values greater than one are &ldquo;above&rdquo; the edge opposite that point. We will use the convex/affine combination for rasterization.</p>   
+    </article>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.6/d3.min.js" charset="utf-8"></script>
+<script>
+// responsive svg from http://stackoverflow.com/a/25978286
+d3.select("#demo")
+   .append("svg")
+   .attr("preserveAspectRatio", "xMinYMin meet")
+   .attr("viewBox", "0 0 500 500")
+   .classed("svg-content-responsive", true); 
+   
+// Triangle corners
+var l = 250;
+var a = [250, 250 - 250 / (2 * Math.cos(30 * Math.PI / 180))], 
+    b = [125, 250 + 0.5 * 250 * Math.tan(30 * Math.PI / 180)], 
+    c = [375, 250 + 0.5 * 250 * Math.tan(30 * Math.PI / 180)];
+
+// Add the triangle
+var triangle = d3.svg.line()
+    .interpolate("linear-closed");
+d3.select("svg")
+    .datum([a, b, c])
+    .append("path") // Geometry
+        .attr("class", "triangle")
+        .attr("d", triangle);
+d3.select("svg").selectAll("text")
+    .data([a,b,c])
+    .enter()
+        .append("text")  // Labels 
+        .attr("text-anchor", "middle")
+        .attr("x", function(d) 
+            {return d[0] + 10 * (d[0] - 250) / Math.sqrt((d[0]-250)*(d[0]-250)
+                                                        +(d[1]-250)*(d[1]-250));} )
+        .attr("y", function(d)
+            {return d[1] + 10 * (d[1] - 250) / Math.sqrt((d[0]-250)*(d[0]-250)
+                                                        +(d[1]-250)*(d[1]-250));} )
+        .text(function(d, i) { return ["a", "b", "c"][i];});
+
+// Add the point
+var pt = [250, 250];
+var point = d3.select("svg").selectAll(".point")
+    .data([pt]);
+point.enter()
+    .append("circle")
+        .attr("class", "point")
+        .attr("r", 3.5)
+point
+    .attr("cx", function(d) {return d[0];})
+    .attr("cy", function(d) {return d[1];});
+   
+// Slider functions
+// Always move along maximum change in alpha/beta/gamma; i.e., in steps orthogonal
+// to the edge opposite.
+var alpha = 0.33, beta = 0.33, gamma = 0.33;
+function update(which) {
+    if(which == "alpha")
+    {
+        var old = alpha;
+        alpha = +(document.querySelector("#alpha").value);
+        var delta = alpha - old;
+        beta -= 0.5 * delta;
+        gamma -= 0.5 * delta;
+        document.querySelector("#beta").value = beta;
+        document.querySelector("#gamma").value = gamma;
+    }
+    else if(which == "beta")
+    {
+        var old = beta;
+        beta = +(document.querySelector("#beta").value);
+        var delta = beta - old;
+        alpha -= 0.5 * delta;
+        gamma -= 0.5 * delta;
+        document.querySelector("#alpha").value = alpha;
+        document.querySelector("#gamma").value = gamma;
+    }
+    else if(which == "gamma")
+    {
+        var old = gamma;
+        gamma = +(document.querySelector("#gamma").value);
+        var delta = gamma - old;
+        beta -= 0.5 * delta;
+        alpha -= 0.5 * delta;
+        document.querySelector("#beta").value = beta;
+        document.querySelector("#alpha").value = alpha;
+    }
+    document.querySelector("#alphatxt").innerHTML = "&alpha; " + alpha;
+    document.querySelector("#betatxt").innerHTML = "&beta; " + beta;
+    document.querySelector("#gammatxt").innerHTML = "&gamma; " + gamma;
+    pt[0] = alpha * a[0] + beta * b[0] + gamma * c[0];
+    pt[1] = alpha * a[1] + beta * b[1] + gamma * c[1];
+    d3.select("svg").selectAll(".point")
+        .data([pt])
+        .attr("cx", function(d) {return d[0];})
+        .attr("cy", function(d) {return d[1];});
+}
+</script>
+</body>
+</html>
